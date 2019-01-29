@@ -1,0 +1,71 @@
+FROM alpine
+RUN apk update \
+ && apk add --no-cache build-base cmake g++ linux-headers openssl python3-dev ca-certificates wget vim git \
+ && update-ca-certificates
+
+ENV ECFLOW_VERSION=4.12.0
+ENV BOOST_VERSION=1.53.0
+ENV DBUILD=/tmp/ecflow_build
+RUN mkdir ${DBUILD}
+
+RUN cd ${DBUILD} \
+    && export BOOST_TGZ=boost_$(echo ${BOOST_VERSION} | tr '.' '_').tar.gz \
+	    ETGZ=ecFlow.tgz \
+	    HTTPB=https://sourceforge.net/projects/boost/files/boost \
+	    HTTPE=https://software.ecmwf.int/wiki/download/attachments/8650755 \
+    && wget -O ${ETGZ} ${HTTPE}/ecFlow-$ECFLOW_VERSION-Source.tar.gz?api=v2 \
+    && wget -O ${BOOST_TGZ} ${HTTPE}/${BOOST_TGZ}?api=v2 \
+    && tar -xzf ${ETGZ} \
+    && tar -xzf ${BOOST_TGZ} \
+    && rm ${BOOST_TGZ} ${ETGZ}
+
+RUN cd ${DBUILD} \
+    && export WK=${DBUILD}/ecFlow-${ECFLOW_VERSION}-Source \ 
+              BOOST_ROOT=${DBUILD}/boost_$(echo ${BOOST_VERSION} | tr '.' '_') \
+    && cd ${BOOST_ROOT} \
+    && python_root=$(python3 -c "import sys; print(sys.prefix)") \
+    && ./bootstrap.sh  --with-python-root=$python_root \
+                       --with-python=/usr/bin/python3 \
+    && sed -i "s|using python : 3.6 :  ;|using python : 3 : python3 : /usr/include/python ;|g" project-config.jam \
+    && ln -sf /usr/include/python3.6m /usr/include/python \
+    && ln -sf /usr/include/python3.6m /usr/include/python3.6 \
+    && $WK/build_scripts/boost_1_53_fix.sh \
+    && ash $WK/build_scripts/boost_build.sh \
+    && mkdir -p $WK/build 
+
+# RUN wget -O cmake.tgz https://github.com/Kitware/CMake/releases/download/v3.13.2/cmake-3.13.2.tar.gz  && tar -xzvf cmake.tgz && cd ./cmake* && ./configure && make all install
+ENV CM=https://github.com/Kitware/CMake/releases/download/v3.12.4/cmake-3.12.4.tar.gz
+RUN cd /tmp/ecflow_build/ && wget -O cmake-3.tgz ${CM}
+
+# DEV
+# COPY cmake-3.13.2.tar.gz /tmp/ecflow_build/
+RUN cd /tmp/ecflow_build/ \
+    && tar -xzf cmake-3.tgz \
+    && cd cmake-3.* \
+    && ./configure \
+    && make && make install
+
+RUN export WK=${DBUILD}/ecFlow-${ECFLOW_VERSION}-Source \ 
+              BOOST_ROOT=${DBUILD}/boost_$(echo ${BOOST_VERSION} | tr '.' '_') \
+    && cd $WK/build \
+    && sed -i '1s/^/cmake_policy(SET CMP0004 OLD)/' ../cmake/ecbuild_add_library.cmake \
+    && cmake -DCMAKE_CXX_FLAGS=-w -DENABLE_GUI=OFF -DENABLE_UI=OFF .. \
+    && make -j$(grep processor /proc/cpuinfo | wc -l) \
+    && make install
+
+# RUN apk del cmake g++ linux-headers build-base 
+# RUN rm -rf ${DBUILD}
+
+RUN adduser -SD ecflow
+WORKDIR /home/ecflow
+USER ecflow
+EXPOSE 2500
+# ENTRYPOINT ["/usr/local/bin/ecflow_server", "-d", "--port", "2500"]
+ENV ECFLOW_USER=ecflow \
+    ECF_PORT=2500 \
+    ECF_HOME=/home/ecflow \
+    HOME=/home/ecflow \
+    HOST=ecflow \
+    LANG=C \
+    PYTHONPATH=/usr/local/lib/python3/site-packages
+# https://pkgs.alpinelinux.org/packages?name=build-base&branch=&repo=&arch=&maintainer=
