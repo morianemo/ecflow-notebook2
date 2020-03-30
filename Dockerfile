@@ -3,8 +3,8 @@ RUN apk update \
  && apk add --no-cache build-base cmake g++ linux-headers openssl python3-dev ca-certificates wget vim git \
  && update-ca-certificates
 
-ENV ECFLOW_VERSION=4.12.0
-ENV BOOST_VERSION=1.53.0
+ENV ECFLOW_VERSION=5.3.0
+ENV BOOST_VERSION=1.71.0
 ENV DBUILD=/tmp/ecflow_build
 RUN mkdir ${DBUILD}
 
@@ -29,7 +29,6 @@ RUN cd ${DBUILD} \
     && sed -i "s|using python : 3.6 :  ;|using python : 3 : python3 : /usr/include/python ;|g" project-config.jam \
     && ln -sf /usr/include/python3.6m /usr/include/python \
     && ln -sf /usr/include/python3.6m /usr/include/python3.6 \
-    && $WK/build_scripts/boost_1_53_fix.sh \
     && ash $WK/build_scripts/boost_build.sh \
     && mkdir -p $WK/build 
 
